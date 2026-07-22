@@ -14,7 +14,7 @@ type Handler struct {
 	codec codec.Codec
 }
 
-func NewHandler(s interface{}, opts ...HandleOption) (*Handler, error) {
+func NewHandler(s any, opts ...HandleOption) (*Handler, error) {
 	h := &Handler{}
 
 	for _, opt := range opts {
@@ -30,7 +30,7 @@ func NewHandler(s interface{}, opts ...HandleOption) (*Handler, error) {
 	return h, nil
 }
 
-func (h *Handler) Process(conn *transport.TCPConnection, msg *protocol.Message, server interface{}) {
+func (h *Handler) Process(conn *transport.TCPConnection, msg *protocol.Message, server any) {
 
 	// log.Println("调试: ", h.server, " ", msg.Header.ServiceName, " ", msg.Header.MethodName)
 	result, err := h.invoke(
@@ -79,7 +79,7 @@ func (h *Handler) writeError(conn *transport.TCPConnection, requestID uint64, er
 	conn.Write(resp)
 }
 
-func (h *Handler) invoke(ctx context.Context, service interface{}, serviceName, methodName string, body []byte) (interface{}, error) {
+func (h *Handler) invoke(ctx context.Context, service any, serviceName, methodName string, body []byte) (any, error) {
 
 	serviceValue := reflect.ValueOf(service)
 	method := serviceValue.MethodByName(methodName)

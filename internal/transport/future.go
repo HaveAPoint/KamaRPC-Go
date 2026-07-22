@@ -62,7 +62,7 @@ func (f *Future) DoneChan() <-chan struct{} {
 	return f.done
 }
 
-func (f *Future) GetResult(reply interface{}) error {
+func (f *Future) GetResult(reply any) error {
 	<-f.done
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -74,7 +74,7 @@ func (f *Future) GetResult(reply interface{}) error {
 	return f.codec.Unmarshal(f.res, reply)
 }
 
-func (f *Future) GetResultWithContext(ctx context.Context, reply interface{}) error {
+func (f *Future) GetResultWithContext(ctx context.Context, reply any) error {
 	select {
 	case <-f.done:
 		return f.GetResult(reply)

@@ -99,7 +99,7 @@ func (c *TCPClient) fail(err error) {
 	_ = c.conn.Close()
 
 	// 失败所有 pending
-	c.pending.Range(func(key, value interface{}) bool {
+	c.pending.Range(func(key, value any) bool {
 		future := value.(*Future)
 		future.Done(nil, err)
 		c.pending.Delete(key)

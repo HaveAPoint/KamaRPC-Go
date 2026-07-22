@@ -41,7 +41,7 @@ func NewClient(reg *registry.Registry, opts ...ClientOption) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) InvokeAsync(ctx context.Context, service string, method string, args interface{}) (*transport.Future, error) {
+func (c *Client) InvokeAsync(ctx context.Context, service string, method string, args any) (*transport.Future, error) {
 
 	if !c.limiter.Allow() {
 		return nil, errors.New("rate limit exceeded")
@@ -98,7 +98,7 @@ func (c *Client) InvokeAsync(ctx context.Context, service string, method string,
 }
 
 // 同步接口 = 异步 + 等待
-func (c *Client) Invoke(ctx context.Context, service string, method string, args interface{}, reply interface{}) error {
+func (c *Client) Invoke(ctx context.Context, service string, method string, args any, reply any) error {
 
 	future, err := c.InvokeAsync(ctx, service, method, args)
 	if err != nil {
@@ -138,7 +138,7 @@ func (c *Client) getAddr(service string) (string, error) {
 }
 
 func (c *Client) Close() {
-	c.pools.Range(func(key, value interface{}) bool {
+	c.pools.Range(func(key, value any) bool {
 		pool := value.(*transport.ConnectionPool)
 		pool.Close()
 		return true

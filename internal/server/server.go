@@ -11,7 +11,7 @@ import (
 
 type Server struct {
 	addr     string
-	services map[string]interface{}
+	services map[string]any
 	limiter  *limiter.TokenBucket
 	listener net.Listener
 	handler  *Handler
@@ -33,7 +33,7 @@ func mustNewHandler() *Handler {
 func NewServer(addr string, opts ...ServerOption) (*Server, error) {
 	s := &Server{
 		addr:     addr,
-		services: make(map[string]interface{}),
+		services: make(map[string]any),
 		limiter:  limiter.NewTokenBucket(10000),
 		handler:  mustNewHandler(),
 		conns:    make(map[*transport.TCPConnection]struct{}),
@@ -48,7 +48,7 @@ func NewServer(addr string, opts ...ServerOption) (*Server, error) {
 	return s, nil
 }
 
-func (s *Server) Register(name string, service interface{}) {
+func (s *Server) Register(name string, service any) {
 	s.services[name] = service
 }
 

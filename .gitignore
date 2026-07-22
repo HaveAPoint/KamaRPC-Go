@@ -3,6 +3,6 @@ kamaRPC
 .vscode/
 __debug_bin*
 .DS_Store
-./cmd/client/client
-./cmd/server1/server1
-./cmd/server2/server2
+cmd/client/client
+cmd/server1/server1
+cmd/server2/server2

@@ -6,8 +6,8 @@ import (
 )
 
 type Codec interface {
-	Marshal(v interface{}) ([]byte, error)
-	Unmarshal(data []byte, v interface{}) error
+	Marshal(v any) ([]byte, error)
+	Unmarshal(data []byte, v any) error
 }
 
 // Type 用于标识不同的编解码类型
