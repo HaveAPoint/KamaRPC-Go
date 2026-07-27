@@ -46,6 +46,7 @@ func NewRegistry(endpoints []string) (*Registry, error) {
 }
 
 func (r *Registry) Register(service string, ins Instance, ttl int64) error {
+	// 创建租约
 	leaseResp, err := r.client.Grant(r.ctx, ttl)
 	if err != nil {
 		return err
@@ -53,11 +54,13 @@ func (r *Registry) Register(service string, ins Instance, ttl int64) error {
 
 	key := fmt.Sprintf("%s%s/%s", r.prefix, service, ins.Addr)
 
+	// 注册服务并绑定租约
 	_, err = r.client.Put(r.ctx, key, ins.Addr, clientv3.WithLease(leaseResp.ID))
 	if err != nil {
 		return err
 	}
 
+	// 保活
 	ch, err := r.client.KeepAlive(r.ctx, leaseResp.ID)
 	if err != nil {
 		return err
