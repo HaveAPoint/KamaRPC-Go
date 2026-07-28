@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+var ErrConnectionClosed = errors.New("connection closed")
+
 type TCPClient struct {
 	conn *TCPConnection
 	addr string
@@ -42,7 +44,7 @@ func (c *TCPClient) nextSeq() uint64 {
 
 func (c *TCPClient) SendAsync(msg *protocol.Message) (*Future, error) {
 	if atomic.LoadInt32(&c.closed) == 1 {
-		return nil, errors.New("connection closed")
+		return nil, ErrConnectionClosed
 	}
 
 	seq := c.nextSeq()
@@ -89,27 +91,31 @@ func (c *TCPClient) readLoop() {
 	}
 }
 
-func (c *TCPClient) fail(err error) {
-	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
-		return
-	}
-
-	// 关闭底层连接
-	// log.Println("底层连接被关闭")
-	_ = c.conn.Close()
-
-	// 失败所有 pending
-	c.pending.Range(func(key, value any) bool {
-		future := value.(*Future)
-		future.Done(nil, err)
-		c.pending.Delete(key)
-		return true
-	})
-}
-
-func (c *TCPClient) Close() error {
+func (c *TCPClient) closeWithError(cause error) error {
 	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
 		return nil
 	}
-	return c.conn.Close()
+
+	closeErr := c.conn.Close()
+
+	c.pending.Range(func(key, _ any) bool {
+		value, loaded := c.pending.LoadAndDelete(key)
+		if !loaded {
+			return true
+		}
+
+		future := value.(*Future)
+		future.Done(nil, cause)
+		return true
+	})
+
+	return closeErr
+}
+
+func (c *TCPClient) fail(err error) {
+	_ = c.closeWithError(err)
+}
+
+func (c *TCPClient) Close() error {
+	return c.closeWithError(ErrConnectionClosed)
 }

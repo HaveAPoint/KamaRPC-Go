@@ -80,6 +80,9 @@ func (h *Handler) writeError(conn *transport.TCPConnection, requestID uint64, er
 }
 
 func (h *Handler) invoke(ctx context.Context, service any, serviceName, methodName string, body []byte) (any, error) {
+	if service == nil {
+		return nil, fmt.Errorf("service not found: %s", serviceName)
+	}
 
 	serviceValue := reflect.ValueOf(service)
 	method := serviceValue.MethodByName(methodName)
