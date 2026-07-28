@@ -47,18 +47,21 @@ func (c *Client) InvokeAsync(ctx context.Context, service string, method string,
 		return nil, errors.New("rate limit exceeded")
 	}
 
+	callCtx, cancel := context.WithTimeout(ctx, c.timeout)
+
 	addr, err := c.getAddr(service)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	br := c.getBreaker(service, addr)
 
 	if !br.Allow() {
+		cancel()
 		return nil, errors.New("circuit breaker open")
 	}
 
 	pool := c.getPool(addr)
-	callCtx, cancel := context.WithTimeout(ctx, c.timeout)
 
 	conn, err := pool.Acquire(callCtx)
 	if err != nil {
