@@ -42,6 +42,16 @@ func (c *TCPClient) nextSeq() uint64 {
 	return atomic.AddUint64(&c.seq, 1)
 }
 
+func (c *TCPClient) completePending(seq uint64, res []byte, err error) bool {
+	value, loaded := c.pending.LoadAndDelete(seq)
+	if !loaded {
+		return false
+	}
+
+	value.(*Future).Done(res, err)
+	return true
+}
+
 func (c *TCPClient) SendAsync(msg *protocol.Message) (*Future, error) {
 	if atomic.LoadInt32(&c.closed) == 1 {
 		return nil, ErrConnectionClosed
@@ -51,6 +61,9 @@ func (c *TCPClient) SendAsync(msg *protocol.Message) (*Future, error) {
 	msg.Header.RequestID = seq
 
 	future := NewFuture()
+	future.setCancel(func(err error) {
+		c.completePending(seq, nil, err)
+	})
 	c.pending.Store(seq, future)
 
 	c.writeMu.Lock()
@@ -76,17 +89,10 @@ func (c *TCPClient) readLoop() {
 
 		seq := msg.Header.RequestID
 
-		val, ok := c.pending.LoadAndDelete(seq)
-		if !ok {
-			continue
-		}
-
-		future := val.(*Future)
-
 		if msg.Header.Error != "" {
-			future.Done(nil, errors.New(msg.Header.Error))
+			c.completePending(seq, nil, errors.New(msg.Header.Error))
 		} else {
-			future.Done(msg.Body, nil)
+			c.completePending(seq, msg.Body, nil)
 		}
 	}
 }

@@ -15,6 +15,7 @@ type Future struct {
 	codec codec.Codec
 
 	onComplete func(error)
+	cancel     func(error)
 }
 
 func NewFuture() *Future {
@@ -47,6 +48,16 @@ func (f *Future) Wait() ([]byte, error) {
 
 func (f *Future) OnComplete(fn func(error)) {
 	f.onComplete = fn
+}
+
+func (f *Future) setCancel(fn func(error)) {
+	f.cancel = fn
+}
+
+func (f *Future) Cancel(err error) {
+	if f.cancel != nil {
+		f.cancel(err)
+	}
 }
 
 func (f *Future) WaitWithContext(ctx context.Context) ([]byte, error) {

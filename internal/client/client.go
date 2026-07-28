@@ -58,17 +58,17 @@ func (c *Client) InvokeAsync(ctx context.Context, service string, method string,
 	}
 
 	pool := c.getPool(addr)
+	callCtx, cancel := context.WithTimeout(ctx, c.timeout)
 
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-
-	conn, err := pool.Acquire(ctx)
+	conn, err := pool.Acquire(callCtx)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
 	body, err := c.codec.Marshal(args)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
@@ -83,6 +83,7 @@ func (c *Client) InvokeAsync(ctx context.Context, service string, method string,
 	future, err := conn.SendAsync(req)
 	if err != nil {
 		br.RecordFailure()
+		cancel()
 		return nil, err
 	}
 
@@ -94,12 +95,20 @@ func (c *Client) InvokeAsync(ctx context.Context, service string, method string,
 		}
 	})
 
+	go func() {
+		select {
+		case <-callCtx.Done():
+			future.Cancel(callCtx.Err())
+		case <-future.DoneChan():
+		}
+		cancel()
+	}()
+
 	return future, nil
 }
 
 // 同步接口 = 异步 + 等待
 func (c *Client) Invoke(ctx context.Context, service string, method string, args any, reply any) error {
-
 	future, err := c.InvokeAsync(ctx, service, method, args)
 	if err != nil {
 		return err
