@@ -47,6 +47,7 @@ func (c *Client) InvokeAsync(ctx context.Context, service string, method string,
 		return nil, errors.New("rate limit exceeded")
 	}
 
+	// timeout 覆盖整个 RPC：服务发现 + 取连接 + 发送 + 等待响应
 	callCtx, cancel := context.WithTimeout(ctx, c.timeout)
 
 	addr, err := c.getAddr(service)
@@ -54,8 +55,8 @@ func (c *Client) InvokeAsync(ctx context.Context, service string, method string,
 		cancel()
 		return nil, err
 	}
-	br := c.getBreaker(service, addr)
 
+	br := c.getBreaker(service, addr)
 	if !br.Allow() {
 		cancel()
 		return nil, errors.New("circuit breaker open")
