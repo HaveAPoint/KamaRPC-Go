@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 )
@@ -15,6 +16,12 @@ const (
 	CompressionNone CompressionType = iota
 	CompressionGzip
 )
+
+// MaxDecompressedSize 解压后的上限。压缩比可达 1000:1，
+// 一个通过了 MaxBodySize 检查的小包解压后仍可能撑爆内存。
+const MaxDecompressedSize = 8 << 20 // 8MB
+
+var ErrDecompressedTooLarge = fmt.Errorf("decompressed data exceeds %d bytes", MaxDecompressedSize)
 
 // Compressor 压缩接口
 type compressor interface {
@@ -45,7 +52,18 @@ func (g *GzipCompressor) decompress(data []byte) ([]byte, error) {
 	}
 	defer r.Close()
 
-	return io.ReadAll(r)
+	// 多读 1 字节：能读到说明超限了。不能用 ReadAll，
+	// 读多少完全由压缩包内容决定，等于让对端决定我们分配多少内存
+	var buf bytes.Buffer
+	n, err := io.CopyN(&buf, r, MaxDecompressedSize+1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if n > MaxDecompressedSize {
+		return nil, ErrDecompressedTooLarge
+	}
+
+	return buf.Bytes(), nil
 }
 
 var (
