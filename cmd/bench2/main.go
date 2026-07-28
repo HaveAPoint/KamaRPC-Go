@@ -93,7 +93,7 @@ func main() {
 					reply := &api.Reply{}
 
 					err := c.Invoke(
-						context.Background(),
+						ctx,
 						*serviceName,
 						*methodName,
 						args,
@@ -103,6 +103,10 @@ func main() {
 					lat := time.Since(reqStart).Microseconds()
 
 					if err != nil {
+						// 压测时限到了导致的中断不是服务端的错，不计入失败
+						if ctx.Err() != nil {
+							return
+						}
 						atomic.AddInt64(&m.fail, 1)
 						continue
 					}
