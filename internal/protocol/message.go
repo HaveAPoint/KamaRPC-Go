@@ -8,6 +8,32 @@ import (
 
 const Magic uint16 = 0x1234
 
+// HeaderFixedLen 固定包头长度：magic(2) + headerLen(4) + bodyLen(4)
+const HeaderFixedLen = 10
+
+// 单包长度上限。远端声明的长度先校验再分配，否则一个连接就能耗尽内存。
+const (
+	MaxHeaderSize = 1 << 16 // 64KB，header 只放服务名/方法名/错误串
+	MaxBodySize   = 4 << 20 // 4MB
+)
+
+var (
+	ErrHeaderTooLarge = fmt.Errorf("header exceeds %d bytes", MaxHeaderSize)
+	ErrBodyTooLarge   = fmt.Errorf("body exceeds %d bytes", MaxBodySize)
+)
+
+// ValidateLen 校验对端声明的长度是否在允许范围内。
+// 必须在用这两个值做任何分配或切片之前调用。
+func ValidateLen(headerLen, bodyLen uint32) error {
+	if headerLen > MaxHeaderSize {
+		return ErrHeaderTooLarge
+	}
+	if bodyLen > MaxBodySize {
+		return ErrBodyTooLarge
+	}
+	return nil
+}
+
 type Message struct {
 	Header *Header
 	Body   []byte
@@ -41,6 +67,11 @@ func Encode(msg *Message) ([]byte, error) {
 
 	headerLen := uint32(len(headerBytes))
 	bodyLen := uint32(len(bodyBytes))
+
+	// 出站校验
+	if err := ValidateLen(headerLen, bodyLen); err != nil {
+		return nil, err
+	}
 
 	total := 2 + 4 + 4 + headerLen + bodyLen
 	buf := make([]byte, total)
@@ -83,7 +114,12 @@ func Decode(data []byte) (*Message, error) {
 	headerLen := binary.BigEndian.Uint32(data[2:6])
 	bodyLen := binary.BigEndian.Uint32(data[6:10])
 
-	totalLen := 10 + int(headerLen) + int(bodyLen)
+	// 入站校验
+	if err := ValidateLen(headerLen, bodyLen); err != nil {
+		return nil, err
+	}
+
+	totalLen := HeaderFixedLen + int(headerLen) + int(bodyLen)
 	if len(data) < totalLen {
 		return nil, fmt.Errorf("incomplete packet")
 	}

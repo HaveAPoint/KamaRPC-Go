@@ -2,7 +2,6 @@ package transport
 
 import (
 	"bufio"
-	"io"
 	"kamaRPC/internal/protocol"
 	"net"
 	"sync"
@@ -22,21 +21,27 @@ func (pb *PacketBuffer) Write(data []byte) {
 	pb.lock.Unlock()
 }
 
-func (pb *PacketBuffer) Read() []byte {
+func (pb *PacketBuffer) Read() ([]byte, error) {
 	pb.lock.Lock()
 	defer pb.lock.Unlock()
 
-	// 最小包头长度校验
-	if len(pb.buf) < 10 {
-		return nil
+	// 固定包头还没收齐
+	if len(pb.buf) < protocol.HeaderFixedLen {
+		return nil, nil
 	}
 
-	headerLen := int(protocol.DecodeHeaderLen(pb.buf[2:6]))
-	bodyLen := int(protocol.DecodeBodyLen(pb.buf[6:10]))
-	totalLen := 10 + headerLen + bodyLen
+	headerLen := protocol.DecodeHeaderLen(pb.buf[2:6])
+	bodyLen := protocol.DecodeBodyLen(pb.buf[6:10])
+
+	// 关键：先校验再算 totalLen。长度非法时这条连接已经不可信，直接报错让上层断开
+	if err := protocol.ValidateLen(headerLen, bodyLen); err != nil {
+		return nil, err
+	}
+
+	totalLen := protocol.HeaderFixedLen + int(headerLen) + int(bodyLen)
 
 	if len(pb.buf) < totalLen {
-		return nil
+		return nil, nil
 	}
 
 	packet := make([]byte, totalLen)
@@ -44,7 +49,7 @@ func (pb *PacketBuffer) Read() []byte {
 
 	// 移动窗口
 	pb.buf = pb.buf[totalLen:]
-	return packet
+	return packet, nil
 }
 
 type TCPConnection struct {
@@ -68,17 +73,19 @@ func NewTCPConnection(conn net.Conn) *TCPConnection {
 
 func (tc *TCPConnection) Read() (*protocol.Message, error) {
 	for {
-		// 尝试从缓冲区取完整包
-		if packet := tc.buffer.Read(); packet != nil {
+		// 尝试从缓冲区取完整包。长度非法时必须立刻返回，
+		// 否则外层循环会继续往 pb.buf 里 append，缓冲区无限增长
+		packet, err := tc.buffer.Read()
+		if err != nil {
+			return nil, err
+		}
+		if packet != nil {
 			return protocol.Decode(packet)
 		}
 
 		tmp := make([]byte, BufferSize)
 		n, err := tc.reader.Read(tmp)
 		if err != nil {
-			if err == io.EOF {
-				return nil, err
-			}
 			return nil, err
 		}
 
