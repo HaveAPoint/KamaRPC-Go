@@ -8,6 +8,7 @@ import (
 	"kamaRPC/internal/transport"
 	"log"
 	"reflect"
+	"runtime/debug"
 )
 
 type Handler struct {
@@ -79,7 +80,16 @@ func (h *Handler) writeError(conn *transport.TCPConnection, requestID uint64, er
 	conn.Write(resp)
 }
 
-func (h *Handler) invoke(ctx context.Context, service any, serviceName, methodName string, body []byte) (any, error) {
+func (h *Handler) invoke(ctx context.Context, service any, serviceName, methodName string, body []byte) (result any, err error) {
+	// 业务方法是用户代码，panic 只能影响当前请求，不能带崩进程
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("panic in %s.%s: %v\n%s", serviceName, methodName, r, debug.Stack())
+			result = nil
+			err = fmt.Errorf("internal error: %s.%s panicked", serviceName, methodName)
+		}
+	}()
+
 	if service == nil {
 		return nil, fmt.Errorf("service not found: %s", serviceName)
 	}
