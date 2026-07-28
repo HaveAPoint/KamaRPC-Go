@@ -7,6 +7,7 @@ import (
 	"kamaRPC/internal/transport"
 	"log"
 	"net"
+	"sync"
 )
 
 type Server struct {
@@ -17,7 +18,10 @@ type Server struct {
 	handler  *Handler
 	codec    codec.Codec
 
-	conns   map[*transport.TCPConnection]struct{}
+	mu       sync.Mutex // 保护 conns 和 shutdown
+	conns    map[*transport.TCPConnection]struct{}
+	shutdown bool
+
 	closing chan struct{}
 }
 
@@ -83,6 +87,24 @@ func (s *Server) Handle(conn *transport.TCPConnection) {
 	}
 }
 
+// trackConn 登记新连接；已进入关闭流程时返回 false，调用方自己关掉这个连接
+func (s *Server) trackConn(conn *transport.TCPConnection) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.shutdown {
+		return false
+	}
+	s.conns[conn] = struct{}{}
+	return true
+}
+
+func (s *Server) untrackConn(conn *transport.TCPConnection) {
+	s.mu.Lock()
+	delete(s.conns, conn)
+	s.mu.Unlock()
+}
+
 func (s *Server) Start() error {
 	ln, err := net.Listen("tcp", s.addr)
 	if err != nil {
@@ -103,14 +125,16 @@ func (s *Server) Start() error {
 
 		tcpConn := transport.NewTCPConnection(conn)
 
-		s.conns[tcpConn] = struct{}{}
+		if !s.trackConn(tcpConn) {
+			tcpConn.Close()
+			return nil
+		}
 
 		go func() {
+			defer s.untrackConn(tcpConn)
 			s.Handle(tcpConn)
-			delete(s.conns, tcpConn)
 		}()
 	}
-
 }
 
 func (s *Server) Close() {
@@ -120,13 +144,27 @@ func (s *Server) Close() {
 }
 
 func (s *Server) Shutdown() {
+	s.mu.Lock()
+	if s.shutdown {
+		s.mu.Unlock()
+		return
+	}
+	s.shutdown = true
+
+	conns := make([]*transport.TCPConnection, 0, len(s.conns))
+	for conn := range s.conns {
+		conns = append(conns, conn)
+	}
+	s.conns = make(map[*transport.TCPConnection]struct{})
+	s.mu.Unlock()
+
 	close(s.closing)
 
 	if s.listener != nil {
 		s.listener.Close()
 	}
 
-	for conn := range s.conns {
+	for _, conn := range conns {
 		conn.Close()
 	}
 
