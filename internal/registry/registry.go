@@ -82,7 +82,7 @@ func (r *Registry) Register(service string, ins Instance, ttl int64) error {
 func (r *Registry) Discover(service string) ([]Instance, error) {
 	r.mu.RLock()
 	if _, ok := r.services[service]; ok {
-		instances := r.copyInstances(service)
+		instances := r.copyInstancesLocked(service)
 		r.mu.RUnlock()
 		return instances, nil
 	}
@@ -93,7 +93,10 @@ func (r *Registry) Discover(service string) ([]Instance, error) {
 		return nil, err
 	}
 
-	return r.copyInstances(service), nil
+	// initService 返回时已放锁，这里要自己重新拿一次
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.copyInstancesLocked(service), nil
 }
 
 // 初始化服务缓存
@@ -158,10 +161,9 @@ func (r *Registry) watch(service string) {
 	}
 }
 
-func (r *Registry) copyInstances(service string) []Instance {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
+// copyInstancesLocked 复制实例快照，避免把内部 map 暴露给调用方。
+// 调用方必须已持有 r.mu（读锁或写锁）——自己不加锁，否则与持锁的调用方嵌套会死锁。
+func (r *Registry) copyInstancesLocked(service string) []Instance {
 	var instances []Instance
 	for _, ins := range r.services[service] {
 		instances = append(instances, ins)
