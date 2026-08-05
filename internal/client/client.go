@@ -23,15 +23,17 @@ type Client struct {
 	codec   codec.Codec
 	breaker sync.Map // map[string]*CircuitBreaker
 
-	pools sync.Map // map[string]*transport.ConnectionPool
+	poolSize int
+	pools    sync.Map // map[string]*transport.ConnectionPool
 }
 
 func NewClient(reg *registry.Registry, opts ...ClientOption) (*Client, error) {
 	c := &Client{
 		reg:     reg,
 		lb:      &loadbalance.RoundRobin{},
-		limiter: limiter.NewTokenBucket(10000),
-		timeout: 5 * time.Second,
+		limiter:  limiter.NewTokenBucket(10000),
+		timeout:  5 * time.Second,
+		poolSize: 1, // 单连接已支持多路复用，默认不开多条
 	}
 	for _, opt := range opts {
 		if err := opt(c); err != nil {
@@ -126,7 +128,7 @@ func (c *Client) getPool(addr string) *transport.ConnectionPool {
 		return pool.(*transport.ConnectionPool)
 	}
 
-	newPool := transport.NewConnectionPool(addr, 0, 1)
+	newPool := transport.NewConnectionPool(addr, c.poolSize)
 	actual, _ := c.pools.LoadOrStore(addr, newPool)
 	return actual.(*transport.ConnectionPool)
 }

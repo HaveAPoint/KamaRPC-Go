@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"kamaRPC/internal/codec"
 	"kamaRPC/internal/loadbalance"
 	"time"
@@ -29,6 +30,19 @@ func WithClientTimeout(d time.Duration) ClientOption {
 func WithClientLoadBalancer(lb loadbalance.LoadBalancer) ClientOption {
 	return func(c *Client) error {
 		c.lb = lb
+		return nil
+	}
+}
+
+// WithPoolSize 设置每个地址的最大连接数。
+// 单条连接已支持 requestID 多路复用，所以默认 1 条就够；
+// 调大主要是为了绕开单连接的写锁串行和内核缓冲区瓶颈。
+func WithPoolSize(n int) ClientOption {
+	return func(c *Client) error {
+		if n < 1 {
+			return errors.New("pool size must be at least 1")
+		}
+		c.poolSize = n
 		return nil
 	}
 }
